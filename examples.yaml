@@ -1,0 +1,319 @@
+# Orders
+# Endpoints with GET, POST, and PUT all defined on the same resource path.
+/api/v1/orders:
+  get:
+    curl: 'curl -X GET "https://${API_SERVER_URL}/api/v1/orders"'
+    summary: List orders
+    response: |
+      {
+        "items": [
+          {
+            "id": "8f14e45f-ceea-467e-b3f6-1c8b6a2f1d3a",
+            "status": "PENDING",
+            "customerId": "3b1e2c4a-9f77-4e2b-8a11-0d6f9a2c7b55",
+            "total": 129.99,
+            "currency": "USD",
+            "createdTime": "2026-01-14T09:12:03.000Z"
+          },
+          {
+            "id": "1a2b3c4d-5e6f-7089-90ab-cdef01234567",
+            "status": "SHIPPED",
+            "customerId": "5c6d7e8f-9a0b-41c2-83d4-e5f607182930",
+            "total": 42.50,
+            "currency": "USD",
+            "createdTime": "2026-01-10T15:47:21.000Z"
+          }
+        ],
+        "offset": 0,
+        "limit": 50,
+        "total": 2,
+        "hasMore": false
+      }
+
+/api/v1/orders/import:
+  post:
+    curl: 'curl -X POST -H "Content-Type: text/csv" -d @orders.csv "https://${API_SERVER_URL}/api/v1/orders/import"'
+    summary: Bulk-import orders from a CSV file
+    request: |
+      CustomerId,Sku,Quantity,UnitPrice,Currency,ShipToCountry
+      3b1e2c4a-9f77-4e2b-8a11-0d6f9a2c7b55,SKU-1001,2,24.99,USD,US
+      5c6d7e8f-9a0b-41c2-83d4-e5f607182930,SKU-2044,1,42.50,USD,CA
+      9d8c7b6a-5f4e-3d2c-1b0a-abcdef123456,SKU-3399,5,6.00,USD,GB
+    response: |
+      {
+        "importId": "c2f4a6b8-1234-4d5e-8f90-abcdef012345",
+        "ordersCreated": 3,
+        "rowsProcessed": 3,
+        "rowsFailed": 0
+      }
+
+/api/v1/orders/{orderId}:
+  get:
+    curl: 'curl -X GET "https://${API_SERVER_URL}/api/v1/orders/{orderId}"'
+    summary: Get an order by ID
+    response: |
+      {
+        "id": "8f14e45f-ceea-467e-b3f6-1c8b6a2f1d3a",
+        "status": "PENDING",
+        "customerId": "3b1e2c4a-9f77-4e2b-8a11-0d6f9a2c7b55",
+        "items": [
+          {
+            "sku": "SKU-1001",
+            "quantity": 2,
+            "unitPrice": 24.99
+          }
+        ],
+        "total": 129.99,
+        "currency": "USD",
+        "createdTime": "2026-01-14T09:12:03.000Z"
+      }
+  put:
+    curl: 'curl -X PUT -H "Content-Type: application/json" -d @order.json "https://${API_SERVER_URL}/api/v1/orders/{orderId}"'
+    summary: Replace an existing order
+    request: |
+      {
+        "customerId": "3b1e2c4a-9f77-4e2b-8a11-0d6f9a2c7b55",
+        "items": [
+          {
+            "sku": "SKU-1001",
+            "quantity": 3,
+            "unitPrice": 24.99
+          }
+        ],
+        "shipToCountry": "US"
+      }
+    response: |
+      {
+        "id": "8f14e45f-ceea-467e-b3f6-1c8b6a2f1d3a",
+        "status": "PENDING",
+        "total": 74.97,
+        "currency": "USD",
+        "lastModifiedTime": "2026-01-15T11:02:44.000Z"
+      }
+  post:
+    curl: 'curl -X POST "https://${API_SERVER_URL}/api/v1/orders/{orderId}"'
+    summary: Reprocess a failed order (retry payment and fulfillment)
+    response: |
+      {
+        "id": "8f14e45f-ceea-467e-b3f6-1c8b6a2f1d3a",
+        "status": "PROCESSING",
+        "retryCount": 1,
+        "lastModifiedTime": "2026-01-15T11:05:09.000Z"
+      }
+
+/api/v1/orders/{orderId}/status:
+  put:
+    curl: 'curl -X PUT -H "Content-Type: application/json" -d @status.json "https://${API_SERVER_URL}/api/v1/orders/{orderId}/status"'
+    summary: Update only the status of an order
+    request: |
+      {
+        "status": "SHIPPED",
+        "trackingNumber": "1Z999AA10123456784"
+      }
+    response: |
+      {
+        "id": "8f14e45f-ceea-467e-b3f6-1c8b6a2f1d3a",
+        "status": "SHIPPED",
+        "trackingNumber": "1Z999AA10123456784"
+      }
+
+# Customers
+/api/v1/customers:
+  get:
+    curl: 'curl -X GET "https://${API_SERVER_URL}/api/v1/customers"'
+    summary: List customers
+    response: |
+      {
+        "items": [
+          {
+            "id": "3b1e2c4a-9f77-4e2b-8a11-0d6f9a2c7b55",
+            "displayName": "Jordan Lee",
+            "email": "jordan.lee@example.com",
+            "status": "ACTIVE"
+          },
+          {
+            "id": "5c6d7e8f-9a0b-41c2-83d4-e5f607182930",
+            "displayName": "Casey Morgan",
+            "email": "casey.morgan@example.com",
+            "status": "ACTIVE"
+          }
+        ],
+        "offset": 0,
+        "limit": 50,
+        "total": 2,
+        "hasMore": false
+      }
+
+/api/v1/customers/validate:
+  post:
+    curl: 'curl -X POST -H "Content-Type: application/json" -d @customer.json "https://${API_SERVER_URL}/api/v1/customers/validate"'
+    summary: Validate a customer payload before creation
+    request: |
+      {
+        "displayName": "Riley Chen",
+        "email": "riley.chen@example.com",
+        "country": "US"
+      }
+    response: |
+      {
+        "valid": true,
+        "warnings": []
+      }
+
+/api/v1/customers/{customerId}:
+  get:
+    curl: 'curl -X GET "https://${API_SERVER_URL}/api/v1/customers/{customerId}"'
+    summary: Get a customer by ID
+    response: |
+      {
+        "id": "3b1e2c4a-9f77-4e2b-8a11-0d6f9a2c7b55",
+        "displayName": "Jordan Lee",
+        "email": "jordan.lee@example.com",
+        "status": "ACTIVE",
+        "createdTime": "2025-11-02T08:30:00.000Z"
+      }
+  put:
+    curl: 'curl -X PUT -H "Content-Type: application/json" -d @customer.json "https://${API_SERVER_URL}/api/v1/customers/{customerId}"'
+    summary: Update a customer's details
+    request: |
+      {
+        "displayName": "Jordan A. Lee",
+        "email": "jordan.lee@example.com",
+        "status": "ACTIVE"
+      }
+    response: |
+      {
+        "id": "3b1e2c4a-9f77-4e2b-8a11-0d6f9a2c7b55",
+        "displayName": "Jordan A. Lee",
+        "email": "jordan.lee@example.com",
+        "status": "ACTIVE",
+        "lastModifiedTime": "2026-01-15T11:10:00.000Z"
+      }
+  post:
+    curl: 'curl -X POST -H "Content-Type: application/json" -d @merge.json "https://${API_SERVER_URL}/api/v1/customers/{customerId}"'
+    summary: Merge one or more duplicate customer records into this customer
+    request: |
+      {
+        "mergeFromCustomerIds": [
+          "9d8c7b6a-5f4e-3d2c-1b0a-abcdef123456"
+        ]
+      }
+    response: |
+      {
+        "id": "3b1e2c4a-9f77-4e2b-8a11-0d6f9a2c7b55",
+        "mergedCustomerIds": [
+          "9d8c7b6a-5f4e-3d2c-1b0a-abcdef123456"
+        ],
+        "status": "ACTIVE"
+      }
+
+# Products
+/api/v1/products:
+  get:
+    curl: 'curl -X GET "https://${API_SERVER_URL}/api/v1/products"'
+    summary: List products
+    response: |
+      {
+        "items": [
+          {
+            "sku": "SKU-1001",
+            "name": "Trail Running Shoe",
+            "price": 24.99,
+            "currency": "USD",
+            "inStock": true
+          },
+          {
+            "sku": "SKU-2044",
+            "name": "Insulated Water Bottle",
+            "price": 42.50,
+            "currency": "USD",
+            "inStock": false
+          }
+        ],
+        "offset": 0,
+        "limit": 50,
+        "total": 2,
+        "hasMore": false
+      }
+
+/api/v1/products/{productId}/reviews:
+  get:
+    curl: 'curl -X GET "https://${API_SERVER_URL}/api/v1/products/{productId}/reviews"'
+    summary: List reviews for a product
+    response: |
+      {
+        "items": [
+          {
+            "reviewId": "e1f2a3b4-c5d6-47e8-9f01-2a3b4c5d6e7f",
+            "rating": 5,
+            "comment": "Great fit, very durable.",
+            "createdTime": "2026-01-02T18:22:10.000Z"
+          }
+        ],
+        "offset": 0,
+        "limit": 50,
+        "total": 1,
+        "hasMore": false
+      }
+
+/api/v1/products/{productId}:
+  get:
+    curl: 'curl -X GET "https://${API_SERVER_URL}/api/v1/products/{productId}"'
+    summary: Get a product by ID
+    response: |
+      {
+        "sku": "SKU-1001",
+        "name": "Trail Running Shoe",
+        "price": 24.99,
+        "currency": "USD",
+        "inStock": true,
+        "quantityAvailable": 128
+      }
+  put:
+    curl: 'curl -X PUT -H "Content-Type: application/json" -d @product.json "https://${API_SERVER_URL}/api/v1/products/{productId}"'
+    summary: Update a product's details
+    request: |
+      {
+        "name": "Trail Running Shoe",
+        "price": 22.99,
+        "currency": "USD"
+      }
+    response: |
+      {
+        "sku": "SKU-1001",
+        "name": "Trail Running Shoe",
+        "price": 22.99,
+        "currency": "USD",
+        "lastModifiedTime": "2026-01-15T11:15:30.000Z"
+      }
+  post:
+    curl: 'curl -X POST -H "Content-Type: application/json" -d @restock.json "https://${API_SERVER_URL}/api/v1/products/{productId}"'
+    summary: Restock a product (add to available quantity)
+    request: |
+      {
+        "quantityAdded": 50,
+        "warehouseId": "WH-EAST-01"
+      }
+    response: |
+      {
+        "sku": "SKU-1001",
+        "quantityAvailable": 178,
+        "inStock": true
+      }
+
+# Account settings
+/api/v1/settings:
+  put:
+    curl: 'curl -X PUT -H "Content-Type: application/json" -d @settings.json "https://${API_SERVER_URL}/api/v1/settings"'
+    summary: Update account-level settings
+    request: |
+      {
+        "defaultCurrency": "USD",
+        "notificationsEnabled": true
+      }
+    response: |
+      {
+        "defaultCurrency": "USD",
+        "notificationsEnabled": true,
+        "lastModifiedTime": "2026-01-15T11:20:00.000Z"
+      }

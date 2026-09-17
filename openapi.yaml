@@ -1,0 +1,554 @@
+openapi: 3.0.3
+info:
+  title: Example Commerce API
+  version: '1.0'
+  description: >-
+    A generic example API used to demonstrate documentation tooling. It
+    models a small commerce domain (orders, customers, products, and account
+    settings) and is not tied to any specific product.
+servers:
+  - url: /api/v1
+tags:
+  - name: Orders
+    description: >-
+      Endpoints for creating, retrieving, and updating orders, including
+      bulk import and status updates.
+  - name: Customers
+    description: Endpoints for managing customer records.
+  - name: Products
+    description: Endpoints for browsing products and their reviews.
+  - name: Settings
+    description: Endpoints for managing account-level settings.
+components:
+  schemas:
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the order
+          example: 8f14e45f-ceea-467e-b3f6-1c8b6a2f1d3a
+        status:
+          type: string
+          description: Current status of the order
+          enum: [PENDING, PROCESSING, SHIPPED, CANCELLED]
+          example: PENDING
+        customerId:
+          type: string
+          format: uuid
+          description: Identifier of the customer who placed the order
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        total:
+          type: number
+          format: double
+          description: Total order amount
+          example: 129.99
+        currency:
+          type: string
+          description: ISO 4217 currency code
+          example: USD
+        createdTime:
+          type: string
+          format: date-time
+        lastModifiedTime:
+          type: string
+          format: date-time
+    OrderItem:
+      type: object
+      properties:
+        sku:
+          type: string
+          description: Stock keeping unit of the product
+          example: SKU-1001
+        quantity:
+          type: integer
+          example: 2
+        unitPrice:
+          type: number
+          format: double
+          example: 24.99
+    OrderStatusUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, SHIPPED, CANCELLED]
+        trackingNumber:
+          type: string
+          example: 1Z999AA10123456784
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          example: Jordan Lee
+        email:
+          type: string
+          format: email
+          example: jordan.lee@example.com
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        createdTime:
+          type: string
+          format: date-time
+        lastModifiedTime:
+          type: string
+          format: date-time
+    CustomerValidationRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        email:
+          type: string
+          format: email
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code
+          example: US
+    CustomerMergeRequest:
+      type: object
+      properties:
+        mergeFromCustomerIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+    Product:
+      type: object
+      properties:
+        sku:
+          type: string
+          example: SKU-1001
+        name:
+          type: string
+          example: Trail Running Shoe
+        price:
+          type: number
+          format: double
+          example: 24.99
+        currency:
+          type: string
+          example: USD
+        inStock:
+          type: boolean
+        quantityAvailable:
+          type: integer
+          example: 128
+        lastModifiedTime:
+          type: string
+          format: date-time
+    ProductRestockRequest:
+      type: object
+      properties:
+        quantityAdded:
+          type: integer
+          example: 50
+        warehouseId:
+          type: string
+          example: WH-EAST-01
+    Review:
+      type: object
+      properties:
+        reviewId:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+        createdTime:
+          type: string
+          format: date-time
+    Settings:
+      type: object
+      properties:
+        defaultCurrency:
+          type: string
+          example: USD
+        notificationsEnabled:
+          type: boolean
+        lastModifiedTime:
+          type: string
+          format: date-time
+    PagedResult:
+      type: object
+      properties:
+        offset:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        hasMore:
+          type: boolean
+paths:
+  /api/v1/orders:
+    get:
+      tags: [Orders]
+      summary: List orders
+      description: Returns a paginated list of orders.
+      responses:
+        '200':
+          description: A page of orders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PagedResult'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Order'
+  /api/v1/orders/import:
+    post:
+      tags: [Orders]
+      summary: Bulk-import orders from a CSV file
+      description: Creates multiple orders at once from an uploaded CSV file.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+      responses:
+        '202':
+          description: Import accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  importId:
+                    type: string
+                    format: uuid
+                  ordersCreated:
+                    type: integer
+                  rowsProcessed:
+                    type: integer
+                  rowsFailed:
+                    type: integer
+  /api/v1/orders/{orderId}:
+    get:
+      tags: [Orders]
+      summary: Get an order by ID
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The requested order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+    put:
+      tags: [Orders]
+      summary: Replace an existing order
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Order'
+      responses:
+        '200':
+          description: The updated order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+    post:
+      tags: [Orders]
+      summary: Reprocess a failed order
+      description: Retries payment and fulfillment for an existing order.
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The order after reprocessing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+  /api/v1/orders/{orderId}/status:
+    put:
+      tags: [Orders]
+      summary: Update only the status of an order
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderStatusUpdate'
+      responses:
+        '200':
+          description: The updated order status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatusUpdate'
+  /api/v1/customers:
+    get:
+      tags: [Customers]
+      summary: List customers
+      responses:
+        '200':
+          description: A page of customers
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PagedResult'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Customer'
+  /api/v1/customers/validate:
+    post:
+      tags: [Customers]
+      summary: Validate a customer payload before creation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerValidationRequest'
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+  /api/v1/customers/{customerId}:
+    get:
+      tags: [Customers]
+      summary: Get a customer by ID
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The requested customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+    put:
+      tags: [Customers]
+      summary: Update a customer's details
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Customer'
+      responses:
+        '200':
+          description: The updated customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+    post:
+      tags: [Customers]
+      summary: Merge duplicate customer records
+      description: Merges one or more duplicate customer records into this customer.
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerMergeRequest'
+      responses:
+        '200':
+          description: The customer after merging
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+  /api/v1/products:
+    get:
+      tags: [Products]
+      summary: List products
+      responses:
+        '200':
+          description: A page of products
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PagedResult'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Product'
+  /api/v1/products/{productId}:
+    get:
+      tags: [Products]
+      summary: Get a product by ID
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The requested product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+    put:
+      tags: [Products]
+      summary: Update a product's details
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+      responses:
+        '200':
+          description: The updated product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+    post:
+      tags: [Products]
+      summary: Restock a product
+      description: Adds to the available quantity of a product.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductRestockRequest'
+      responses:
+        '200':
+          description: The product after restocking
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+  /api/v1/products/{productId}/reviews:
+    get:
+      tags: [Products]
+      summary: List reviews for a product
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A page of reviews
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PagedResult'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Review'
+  /api/v1/settings:
+    put:
+      tags: [Settings]
+      summary: Update account-level settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Settings'
+      responses:
+        '200':
+          description: The updated settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'

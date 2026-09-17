@@ -1,0 +1,380 @@
+#!/usr/bin/python3
+#
+# genex.py
+
+import re
+import os
+import csv
+import yaml
+import json
+from lxml import etree
+from lxml.etree import Element
+from lxml.etree import SubElement
+
+IP_ADDR = '${IP}'
+
+class genex(object):
+
+    def __init__(self):
+        with open('examples.yaml','r') as f:
+            c = f.read()
+        self.data = yaml.load(c, Loader=yaml.FullLoader)
+        with open('openapi.yaml','r') as f:
+            c = f.read()
+        self.openapi = yaml.load(c, Loader=yaml.FullLoader)
+
+    def conditional_assign(self, param):
+        try:
+            param = self.data[self.path][self.method][param]
+        except KeyError:
+            param = False
+        return param
+    
+    def add_etree(self, tree, xpath_pattern, content):
+        element = tree.xpath(xpath_pattern)
+        element[0].text = content
+        return tree
+        
+    def get_filename(self, path, method):
+        path = re.sub('/', '-', path)
+        #path = re.sub('{', '', path)
+        #path = re.sub('}', '', path)
+        filename = 'op' + path + '-' + method + '.dita'
+        self.filename = filename
+    
+    # support different data types for requests and responses
+    def is_xml(self, data):
+        try:
+            etree.fromstring(data)
+            return True
+        except:
+            return False
+    def is_json(self, data):
+        try:
+            json.loads(data)
+            return True
+        except:
+            return False
+    def is_csv(self, data):
+        try:
+            csv.Sniffer().sniff(data, delimiters=',')
+            return True
+        except:
+            return False
+
+    # pass in the 'curl' parameter as the string
+    def set_contentType(self, string):
+        if 'Content-Type' in string:
+            self.contentType = re.sub('.*Content-Type:([^"]*)".*',r'\1',string).strip()
+            self.filetype = self.contentType.split('/')[1]
+        else:
+            self.contentType = False
+            self.filetype = 'json'
+            
+
+    # this is a single instance of curl
+    def format_curl(self, curl):
+        self.set_contentType(curl)
+        headers = '-H "Authorization: <auth-token>" \\'
+        url  = re.sub('.*"https://[^/]*(/[^"]*)".*', r'\1', curl)
+        curl = re.sub('"https://', '%s\\\n    "https://' % headers, curl)
+        curl = re.sub(' -H ', ' \\\n    -H ', curl)
+        #curl = re.sub('--user', '\\\n    --user', curl)
+        curl = re.sub(' -d', ' \\\n    -d', curl)
+        return curl, url
+
+    def format_python(self, url):
+        if not self.request:
+            pystring = '''import requests
+headers = { "Authorization": "<auth-token>" }
+url  = "https://" + SERVER_URL + "%s"
+resp = requests.%s(url, headers=headers)''' % (url, self.method)
+        elif self.request:
+            pystring = "import requests\nimport json\nheaders = {\n\t\"Accept\": \"application/json\",\n"
+            if self.contentType:
+                pystring += '\t"Content-Type": "%s",\n' % self.contentType
+            pystring +='''\t"Authorization": "<auth-token>"
+}
+with open("request.%s") as f: data = json.load(f)
+url  = "https://" + SERVER_URL + "%s"
+resp = requests.%s(url, headers=headers, data=data)''' % (self.filetype, url, self.method)
+        return pystring
+
+    def make_example_sd(self, example, outputclass):
+        sectiondiv = Element("sectiondiv")
+        sectiondiv.attrib["outputclass"] = 'tab-pane'
+        if outputclass == 'bash':
+            sectiondiv.attrib["otherprops"] = 'tab-title(curl)'
+        elif outputclass == 'python':
+            sectiondiv.attrib["otherprops"] = 'tab-title(Python)'
+        cb = SubElement(sectiondiv, "codeblock")
+        cb.attrib["outputclass"] = outputclass
+        cb.text = example
+        return sectiondiv
+    
+    # the reqresp variable is either ['request', 'response'] to indicate which is which
+    def make_sd(self, example, value, reqresp):
+        sectiondiv = Element("sectiondiv")
+        sectiondiv.attrib["outputclass"] = 'tab-pane'
+        sectiondiv.attrib["otherprops"] = 'tab-title(%s)' % example
+        p = SubElement(sectiondiv, "p")
+        #p.text = "The following example shows the %s body for a user with the %s role." % ( reqresp, example )
+        cb = SubElement(sectiondiv, "codeblock")
+        cb.attrib["outputclass"] = "%s" % self.filetype
+        cb.attrib["cid"] = example.lower() + '-request'
+        cb.text = json.dumps( value, indent=4 )
+        return sectiondiv
+
+    def request_in_openapi(self):
+        # create the outer sectiondiv
+        sectiondiv = Element("sectiondiv")
+        sectiondiv.attrib["outputclass"] = 'tabbed-interface'
+        # for each example, create the inner sectiondiv
+        for example in self.openapi['paths'][self.path][self.method]['requestBody']['content']['application/json']['examples']:
+            value = self.openapi['paths'][self.path][self.method]['requestBody']['content']['application/json']['examples'][example]['value']
+            value = json.loads(value)
+            sd = self.make_sd(example, value, 'request')
+            sectiondiv.append(sd)
+        return sectiondiv
+            
+    def response_in_openapi(self):
+        # take first response code (should be 200 or 201) and set that as the "good" status
+        self.statusCode = list(self.openapi['paths'][self.path][self.method]['responses'])[0]
+        # create the outer sectiondiv
+        sectiondiv = Element("sectiondiv")
+        sectiondiv.attrib["outputclass"] = 'tabbed-interface'
+
+        for example in self.openapi['paths'][self.path][self.method]['responses'][self.statusCode]['content']['application/json']['examples']:
+            value = self.openapi['paths'][self.path][self.method]['responses'][self.statusCode]['content']['application/json']['examples'][example]['value']
+            value = json.loads(value)
+            sd = self.make_sd(example, value, 'response')
+            sectiondiv.append(sd)
+        return sectiondiv
+
+    def find_type(self, haystack):
+        if self.is_json(haystack):
+            return 'json'
+        elif self.is_xml(haystack):
+            return 'xml'
+        elif self.is_csv(haystack):
+            return 'csv'
+        else:
+            return False
+
+    def create_example(self):
+        # open template file
+        with open('template.dita','r') as f:
+            content = f.read()
+        content = re.sub('&lt;summary&gt;', self.summary, content)
+        content = bytes(content, encoding="utf8")
+        tree = etree.fromstring(content)
+
+        # format curl and create python example
+        if isinstance(self.curl, str):
+            curlstring, url = self.format_curl(self.curl)
+            #print(" * curlstring = " + curlstring)
+            #print(" *        url = " + url)
+            pystring  = self.format_python(url)
+            tree = self.add_etree(tree, "//codeblock[@cid = 'curl-request']", curlstring)
+            tree = self.add_etree(tree, "//codeblock[@cid = 'python-request']", pystring)
+        elif isinstance(self.curl, list):
+            section = tree.xpath("//section[@cid = 'examples']")[0]
+            # remove the old sectiondiv
+            sectiondiv = tree.xpath("//section[@cid = 'examples']/sectiondiv")[0]
+            sectiondiv.getparent().remove(sectiondiv)
+            # create the new sectiondiv
+            for curlexample in self.curl:
+                excurl  = curlexample['curl']
+                exsum   = curlexample['summary']
+                excurl, url = self.format_curl(excurl)
+                pystring  = self.format_python(url)
+                secdiv1 = self.make_example_sd(excurl, 'bash')
+                secdiv2 = self.make_example_sd(pystring, 'python')
+                # create a new sectiondiv for this particular example
+                parasum = Element("p")
+                parasum.text = exsum
+                newsecdiv = Element("sectiondiv")
+                newsecdiv.attrib["outputclass"] = "tabbed-interface"
+                newsecdiv.append(secdiv1)
+                newsecdiv.append(secdiv2)
+                section.append(parasum)
+                section.append(newsecdiv)
+        else:
+            raise SystemExit('curl is neither a string nor a list')
+
+        # complex lxml insertions
+        # if this is the auth API, remove the <p cid="postauth"/> element because irrelevent
+        if self.path == "/rest/{version}/auth/token": # TODO: replace this path with the path for authentication
+            postauth = tree.xpath("//p[@cid = 'postauth']")[0]
+            postauth.getparent().remove(postauth)
+   
+        # if this path requires a request body, one of these will be set and we can 
+        # create the section that will contain the request body
+        if self.req_oapi or self.request:
+            reqsection = Element("section")
+            reqsection.attrib["cid"] = "request"
+            reqtitle = SubElement(reqsection, "title")
+            reqtitle.text = "Example of the Request Body"
+            para = SubElement(reqsection, "p")
+            para.text = 'The following shows an example of the contents of the request file sent as the request body.'
+
+            # if request-in-openapi is set, get the sample requests from openapi.yaml
+            if self.req_oapi:
+                reqexample = self.request_in_openapi()
+            # if request-in-openapi is not set, fall back to using the request parameter from examples.yaml
+            elif self.request:
+                reqexample = SubElement(reqsection, "codeblock")
+                reqexample.attrib["outputclass"] = "%s" % self.request_type
+                reqexample.text = self.request
+
+            reqsection.append(reqexample)
+            conbody = tree.xpath("//conbody")[0]
+            conbody.insert(1, reqsection)
+   
+        # if the res_oapi variable is true, then look in the OpenAPI spec for the example
+        if self.res_oapi:
+            # if we're using OpenAPI spec, then we need to delete the existing codeblock
+            respbody = tree.xpath("//codeblock[@cid = 'resp-body']")[0]
+            respbody.getparent().remove(respbody)
+            # create a new multi-tabbed section
+            respexample = self.response_in_openapi()
+            # append sectiondiv 
+            respsection = tree.xpath("//section[@cid = 'response']")[0]
+            respsection.append(respexample)
+            
+        # otherwise, fallback to using the examples.yaml file for the response
+        elif self.response != '':
+            tree = self.add_etree(tree, "//codeblock[@cid = 'resp-body']", self.response)
+            cb = tree.xpath("//codeblock[@cid = 'resp-body']")[0]
+            cb.attrib["outputclass"] = "%s" % self.response_type
+        # if both are non-existent, then we don't have a response so tell the user that
+        else:
+            respbody = tree.xpath("//codeblock[@cid = 'resp-body']")[0]
+            respbody.getparent().remove(respbody)
+            para = tree.xpath("//p[@cid = 'resp-body-text']")[0]
+            para.text = 'This endpoint does not return a response body.'
+    
+        # if we have the note, append it to the section
+        if self.note:
+            n = etree.Element("note")
+            n.text = self.note
+            section = tree.xpath("//section[@cid = 'examples']")[0]
+            section.append(n)
+        
+        # if we have the response-para, append it to the response section
+        if self.resppara:
+            html = etree.fromstring(self.resppara, parser=etree.HTMLParser())
+            p = html.xpath("/html/body/p")[0]
+            section = tree.xpath("//section[@cid = 'response']")[0]
+            section.append(p)
+
+        # <section cid="exampleX">  
+        #   <title id="titleX">Example of the Response Body</title>
+        #   <p>The following shows another example of accessing this API endpoint and its response.</p>
+        #   <codeblock cid="curlExampleX" outputclass="bash"></codeblock>
+        #   <codeblock cid="bodyExampleX" outputclass="xml"></codeblock>
+        # </section>
+
+        if self.curllist:
+            conbody = tree.xpath("//conbody")[0]
+            for index,curlexample in enumerate(self.curllist):
+                exIndex = index + 2
+                exCurl = curlexample['curl']
+                exResponse = curlexample['response']
+                exDesc = curlexample['description']
+                # load the request example if it exists
+                exRequest = False
+                try:
+                    exRequest = curlexample['request']
+                except:
+                    pass
+                exCurl,exURL = self.format_curl(exCurl)
+    
+                # create the section for the curl list
+                clsection = etree.Element("section")
+                clsection.attrib["cid"] = "example%i" % exIndex
+        
+                # elements in this section
+                exTitleElem = SubElement(clsection, "title")
+                exDescElem  = SubElement(clsection, "p")
+                exCurlElem  = SubElement(clsection, "codeblock")
+                if exRequest:
+                    reqParaElem = SubElement(clsection, "p")
+                    reqParaElem.text = "The following shows an example of the request body."
+                    reqCodeElem = SubElement(clsection, "codeblock")
+                    reqCodeElem.attrib["outputclass"] = "xml"
+                    reqCodeElem.text = exRequest
+                respParaElem  = SubElement(clsection, "p")
+                respCodeElem  = SubElement(clsection, "codeblock")
+    
+                # set the title of this example
+                exTitleElem.attrib["id"] = "title%i" % exIndex
+                exTitleElem.text  = "Example %i of Accessing this API" % exIndex
+                # set the description of this example
+                exDescElem.text = exDesc
+                # set the curl codeblock
+                exCurlElem.attrib["cid"] = "curlExample%i" % exIndex
+                exCurlElem.attrib["outputclass"] = "bash"
+                exCurlElem.text = exCurl
+                # set the response codeblock
+                respCodeElem.attrib["cid"] = "bodyExample%i" % exIndex
+                respCodeElem.attrib["outputclass"] = "json"
+                respCodeElem.text = exResponse
+                respParaElem.text = "The following shows an example response."
+
+                conbody.append(clsection)
+    
+        # save example
+        content = etree.tostring(tree)
+        content = content.decode('utf8')
+        content = re.sub(IP_ADDR, '10.0.0.2', content)
+        #content = re.sub(r'^', DTD, content)
+        #content = re.sub('the request.json file', 'the <codeph>request.json</codeph> file', content)
+        content = re.sub('&lt;codeph&gt;', '<codeph>', content)     # fix codeph 
+        content = re.sub('&lt;/codeph&gt;', '</codeph>', content)   # fix /codeph
+        #content = re.sub('&lt;xref href="([^"]*)" format="html"&gt;', '<xref href="\g<1>" format="html">', content)   # fix xref
+        content = re.sub('&lt;/xref&gt;', '</xref>', content)   # fix /xref
+        with open('examples/' + self.filename, 'w') as out:
+            out.write(content)
+
+
+    def create_examples(self):
+        for path in self.data:
+            self.path = path
+            for method in self.data[path]:
+                self.method = method
+                self.get_filename(path, method)
+
+                # required parameters
+                self.response = self.data[path][method]['response']
+                self.curl     = self.data[path][method]['curl']
+    
+                # optional parameters
+                self.summary   = self.conditional_assign('summary')
+                self.request   = self.conditional_assign('request')
+                self.note      = self.conditional_assign('note')
+                self.curllist  = self.conditional_assign('curllist')
+                self.req_oapi  = self.conditional_assign('request-in-openapi')
+                self.res_oapi  = self.conditional_assign('response-in-openapi')
+                self.resppara  = self.conditional_assign('response-para')
+
+                # identify the response and request data types
+                self.request_type = self.find_type(self.request)
+                self.response_type = self.find_type(self.response)
+
+                self.create_example()
+                #if self.request == False and self.response == "":
+                #    print('skipping %s' % self.filename)
+                #    continue
+                #else:
+                #    self.create_example()
+
+if __name__ == '__main__':
+    # if we're missing our input files, stop and warn me.
+    if os.stat("examples.yaml").st_size < 2:
+        raise SystemExit("examples.yaml is blank.")
+    if os.stat("openapi.yaml").st_size < 2:
+        raise SystemExit("openapi.yaml is blank.")
+    # otherwise, proceed
+    g = genex()
+    g.create_examples()
