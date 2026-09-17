@@ -1,0 +1,48 @@
+<concept id="GUID-51E5C29A-6B7E-487A-8832-5D709410C16A" xml:lang="en-US">
+  <title cid="R1o2L" id="GUID-467BECC9-358B-4943-8B2F-876A776B3FAF">Example</title>
+  <conbody cid="13dEYq">
+    <section cid="examples">
+      <title>Examples of Accessing the API</title>
+      <p cid="postauth">
+        See <xref format="html" href="authenticate.html" scope="local">Authenticate</xref> page to acquire a token.
+      </p>
+      <sectiondiv outputclass="tabbed-interface"> 
+        <sectiondiv outputclass="tab-pane" otherprops="tab-title(curl)">
+          <p>The following example shows how to use curl to Update account-level settings.</p>
+          <codeblock cid="curl-request" outputclass="bash">curl -X PUT \
+    -H "Content-Type: application/json" \
+    -d @settings.json \
+    -H "Authorization: &lt;auth-token&gt;" \
+    "https://${API_SERVER_URL}/api/v1/settings"</codeblock>
+        </sectiondiv> 
+        <sectiondiv outputclass="tab-pane" otherprops="tab-title(Python)">
+          <p>The following example shows how to use Python to Update account-level settings.</p>
+          <codeblock cid="python-request" outputclass="python">import requests
+import json
+headers = {
+	"Accept": "application/json",
+	"Content-Type": "application/json",
+	"Authorization": "&lt;auth-token&gt;"
+}
+with open("request.json") as f: data = json.load(f)
+url  = "https://" + SERVER_URL + "/api/v1/settings"
+resp = requests.put(url, headers=headers, data=data)</codeblock>
+        </sectiondiv> 
+      </sectiondiv> 
+    </section>
+    <section cid="request"><title>Example of the Request Body</title><p>The following shows an example of the contents of the request file sent as the request body.</p><codeblock outputclass="json">{
+  "defaultCurrency": "USD",
+  "notificationsEnabled": true
+}
+</codeblock></section><section cid="response">
+      <title>Example of the Response Body</title>
+      <p cid="resp-body-text">The following example shows the contents of the response body.</p>
+      <codeblock cid="resp-body" outputclass="json">{
+  "defaultCurrency": "USD",
+  "notificationsEnabled": true,
+  "lastModifiedTime": "2026-01-15T11:20:00.000Z"
+}
+</codeblock>
+    </section>
+  </conbody>
+</concept>

@@ -1,0 +1,55 @@
+<concept id="GUID-51E5C29A-6B7E-487A-8832-5D709410C16A" xml:lang="en-US">
+  <title cid="R1o2L" id="GUID-467BECC9-358B-4943-8B2F-876A776B3FAF">Example</title>
+  <conbody cid="13dEYq">
+    <section cid="examples">
+      <title>Examples of Accessing the API</title>
+      <p cid="postauth">
+        See <xref format="html" href="authenticate.html" scope="local">Authenticate</xref> page to acquire a token.
+      </p>
+      <sectiondiv outputclass="tabbed-interface"> 
+        <sectiondiv outputclass="tab-pane" otherprops="tab-title(curl)">
+          <p>The following example shows how to use curl to List orders.</p>
+          <codeblock cid="curl-request" outputclass="bash">curl -X GET \
+    -H "Authorization: &lt;auth-token&gt;" \
+    "https://${API_SERVER_URL}/api/v1/orders"</codeblock>
+        </sectiondiv> 
+        <sectiondiv outputclass="tab-pane" otherprops="tab-title(Python)">
+          <p>The following example shows how to use Python to List orders.</p>
+          <codeblock cid="python-request" outputclass="python">import requests
+headers = { "Authorization": "&lt;auth-token&gt;" }
+url  = "https://" + SERVER_URL + "/api/v1/orders"
+resp = requests.get(url, headers=headers)</codeblock>
+        </sectiondiv> 
+      </sectiondiv> 
+    </section>
+    <section cid="response">
+      <title>Example of the Response Body</title>
+      <p cid="resp-body-text">The following example shows the contents of the response body.</p>
+      <codeblock cid="resp-body" outputclass="json">{
+  "items": [
+    {
+      "id": "8f14e45f-ceea-467e-b3f6-1c8b6a2f1d3a",
+      "status": "PENDING",
+      "customerId": "3b1e2c4a-9f77-4e2b-8a11-0d6f9a2c7b55",
+      "total": 129.99,
+      "currency": "USD",
+      "createdTime": "2026-01-14T09:12:03.000Z"
+    },
+    {
+      "id": "1a2b3c4d-5e6f-7089-90ab-cdef01234567",
+      "status": "SHIPPED",
+      "customerId": "5c6d7e8f-9a0b-41c2-83d4-e5f607182930",
+      "total": 42.50,
+      "currency": "USD",
+      "createdTime": "2026-01-10T15:47:21.000Z"
+    }
+  ],
+  "offset": 0,
+  "limit": 50,
+  "total": 2,
+  "hasMore": false
+}
+</codeblock>
+    </section>
+  </conbody>
+</concept>
